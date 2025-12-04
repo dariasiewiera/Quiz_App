@@ -8,7 +8,7 @@ class QuizSetViewModel: ObservableObject {
     @Published var currentQuestionIndex: Int = 0
     @Published var userSelections: Set<UUID> = []
     @Published var isAnswerChecked: Bool = false
-    
+    @Published var sessionQuestionCount: Int = 0
     @Published private(set) var questionsToDisplay: [Question] = []
     @Published var showingSummaryScreen: Bool = false
     @Published var allPerfectInSession: Bool = false
@@ -16,24 +16,48 @@ class QuizSetViewModel: ObservableObject {
     
     private let manager: QuizSetManager
     
-    // MARK: - INIT
+    
     init(quizSet: QuizSet, manager: QuizSetManager) {
         self.quizSet = quizSet
         self.manager = manager
         restoreState()
     }
     
-    // MARK: - Przywracanie stanu
+   
     private func restoreState() {
+    
+        if quizSet.isCompleted {
+            showSummaryBasedOnProgress()
+            return
+        }
+        
+        
+        let allQuestionsAnswered = quizSet.questions.allSatisfy { question in
+            quizSet.progress[question.id] != nil
+        }
+        
+        if allQuestionsAnswered && !quizSet.questions.isEmpty {
+            showSummaryBasedOnProgress()
+            return
+        }
+        
+        questionsToDisplay = quizSet.questions
+        sessionQuestionCount = questionsToDisplay.count 
+        
+        showingSummaryScreen = false
+        loadProgress()
+    }
+   /* private func restoreState() {
         if quizSet.isCompleted {
             showSummaryBasedOnProgress()
             return
         }
         
         questionsToDisplay = quizSet.questions
+        sessionQuestionCount = questionsToDisplay.count
         showingSummaryScreen = false
         loadProgress()
-    }
+    }*/
     
     private func showSummaryBasedOnProgress() {
         let allCorrect = quizSet.questions.allSatisfy { q in
@@ -52,7 +76,7 @@ class QuizSetViewModel: ObservableObject {
         isAnswerChecked = false
     }
     
-    // MARK: - Właściwości pomocnicze
+    
     
     var currentQuestion: Question {
         guard currentQuestionIndex < questionsToDisplay.count else {
@@ -62,15 +86,15 @@ class QuizSetViewModel: ObservableObject {
     }
     
     var progressText: String {
-        "Pytanie \(currentQuestionIndex + 1) z \(questionsToDisplay.count)"
+        "Pytanie \(currentQuestionIndex + 1) z \(sessionQuestionCount)"
     }
     
-    /// ▶️ DODANE — tego potrzebuje widok
+  
     var isLastQuestion: Bool {
-        currentQuestionIndex == questionsToDisplay.count - 1
+        currentQuestionIndex == (sessionQuestionCount - 1)
     }
     
-    // MARK: - Ładowanie/Zapisywanie
+   
     
     private func loadProgress() {
         if let firstUnanswered = quizSet.questions.firstIndex(where: { quizSet.progress[$0.id] == nil }) {
@@ -87,7 +111,7 @@ class QuizSetViewModel: ObservableObject {
         manager.updateSet(quizSet)
     }
     
-    // MARK: - Odpowiadanie
+  
     
     func selectAnswer(_ answer: Answer) {
         guard !isAnswerChecked else { return }
@@ -111,7 +135,7 @@ class QuizSetViewModel: ObservableObject {
     
     func nextQuestion() {
         saveProgress()
-        guard currentQuestionIndex < questionsToDisplay.count - 1 else { return }
+        guard currentQuestionIndex < sessionQuestionCount - 1 else { return }
         
         currentQuestionIndex += 1
         userSelections = []
@@ -126,7 +150,7 @@ class QuizSetViewModel: ObservableObject {
         isAnswerChecked = !userSelections.isEmpty
     }
     
-    // MARK: - Powtórka
+    
     
     func filterIncorrectlyAnswered() {
         let wrong = quizSet.questions.filter { q in
@@ -142,6 +166,7 @@ class QuizSetViewModel: ObservableObject {
         }
         
         questionsToDisplay = wrong
+        sessionQuestionCount = wrong.count
         showingSummaryScreen = false
         allPerfectInSession = false
         completedWithErrors = false
@@ -158,7 +183,6 @@ class QuizSetViewModel: ObservableObject {
     // MARK: - Zakończenie testu
     
     func finishSet() {
-        saveProgress()
         
         let allCorrect = questionsToDisplay.allSatisfy { q in
             let correct = Set(q.answers.filter { $0.isCorrect }.map { $0.id })
@@ -170,10 +194,16 @@ class QuizSetViewModel: ObservableObject {
         completedWithErrors = !allCorrect
         
         quizSet.isCompleted = true
-        saveProgress()
         
-        showingSummaryScreen = true
+        
         questionsToDisplay = []
+        
+        saveProgress()
+        //currentQuestionIndex = 0
+        userSelections = []
+        isAnswerChecked = false
+        showingSummaryScreen = true
+        
     }
     
     // MARK: - Reset
@@ -188,6 +218,7 @@ class QuizSetViewModel: ObservableObject {
         completedWithErrors = false
         
         questionsToDisplay = quizSet.questions
+        sessionQuestionCount = questionsToDisplay.count
         loadProgress()
     }
     
@@ -197,6 +228,7 @@ class QuizSetViewModel: ObservableObject {
         completedWithErrors = false
         
         questionsToDisplay = quizSet.questions
+        sessionQuestionCount = questionsToDisplay.count
         loadProgress()
     }
     

@@ -10,7 +10,7 @@ class QuizSetManager: ObservableObject {
     @Published var availableSets: [QuizSet] = []
     
     private let storageKey = "QuizSetsData"
-
+    
     init() {
         loadSets()
         // W przypadku pustej listy (pierwsze uruchomienie), załaduj zestaw demonstracyjny.
@@ -18,7 +18,7 @@ class QuizSetManager: ObservableObject {
             createDemoSet()
         }
     }
-
+    
     // MARK: - Persystencja
     
     /// Zapisuje wszystkie zestawy (w tym ich postępy) do UserDefaults.
@@ -32,7 +32,7 @@ class QuizSetManager: ObservableObject {
             print("Błąd zapisu zestawów (Persistence Error): \(error)")
         }
     }
-
+    
     /// Ładuje zestawy z UserDefaults.
     func loadSets() {
         if let data = UserDefaults.standard.data(forKey: storageKey) {
@@ -87,7 +87,7 @@ class QuizSetManager: ObservableObject {
             return nil
         }
     }
-
+    
     /// Importuje zestaw z JSON.
     func importSetFromJSON(jsonString: String) -> Bool {
         guard let data = jsonString.data(using: .utf8) else { return false }
@@ -113,9 +113,9 @@ class QuizSetManager: ObservableObject {
             return false
         }
     }
-
+    
     // MARK: Zestaw Demonstracyjny
-
+    
     private func createDemoSet() {
         let question1 = Question(
             text: "Czym jest Architektura MVVM w kontekście SwiftUI?",
@@ -149,5 +149,14 @@ class QuizSetManager: ObservableObject {
         availableSets.append(demoSet)
         saveSets()
     }
+    
+    func resetSetProgress(_ set: QuizSet) {
+        if let index = availableSets.firstIndex(where: { $0.id == set.id }) {
+            var updatedSet = availableSets[index]
+            updatedSet.progress = [:] // Czyści mapę odpowiedzi
+            updatedSet.isCompleted = false // Resetuje flagę ukończenia
+            availableSets[index] = updatedSet
+            saveSets()
+        }
+    }
 }
-

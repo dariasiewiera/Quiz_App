@@ -1,8 +1,7 @@
 import Foundation
 import SwiftUI
-import UniformTypeIdentifiers // Konieczne do używania UTType
+import UniformTypeIdentifiers 
 
-// MARK: - Modele Danych (Data Models)
 
 struct Answer: Identifiable, Codable, Equatable, Hashable {
     let id: UUID = UUID()
@@ -14,7 +13,7 @@ struct Question: Identifiable, Codable, Equatable, Hashable {
     let id: UUID = UUID()
     var text: String
     var answers: [Answer]
-
+    
     var allowsMultipleSelection: Bool {
         answers.filter { $0.isCorrect }.count > 1
     }
@@ -25,12 +24,10 @@ struct QuizSet: Identifiable, Codable, Equatable, Hashable {
     var name: String
     var questions: [Question]
     var progress: [UUID: Set<UUID>] = [:]
-    // NOWE POLE: znacznik, że użytkownik ukończył zestaw (kliknął „Dalej” na ostatnim pytaniu)
     var isCompleted: Bool = false
     
     private enum CodingKeys: String, CodingKey {
         case id, name, questions
-        // Uwaga: progress i isCompleted nie są w CodingKeys, żeby import z zewnętrznego JSON je ignorował
     }
     
     init(from decoder: Decoder) throws {
@@ -79,5 +76,30 @@ extension QuizSet: Transferable {
             let decoder = JSONDecoder()
             return try decoder.decode(QuizSet.self, from: data)
         }
+    }
+}
+
+struct QuizDocument: FileDocument {
+    static var readableContentTypes: [UTType] { [.json] }
+    
+    var quizSet: QuizSet
+    
+    init(quizSet: QuizSet) {
+        self.quizSet = quizSet
+    }
+    
+    init(configuration: ReadConfiguration) throws {
+        let data = try configuration.file.regularFileContents
+        ?? Data()
+        let decoder = JSONDecoder()
+        self.quizSet = try decoder.decode(QuizSet.self, from: data)
+    }
+    
+    
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .prettyPrinted
+        let data = try encoder.encode(quizSet)
+        return FileWrapper(regularFileWithContents: data)
     }
 }

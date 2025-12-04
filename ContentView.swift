@@ -13,6 +13,7 @@ struct ContentView: View {
     @State private var isImporting = false
     @State private var isExporting = false
     @State private var selectedSetForExport: QuizSet? = nil
+    @State private var documentToExport: QuizDocument? = nil
     
     // Stany dla wklejania tekstu (import z tekstu)
     @State private var showingPasteImportSheet = false
@@ -22,7 +23,7 @@ struct ContentView: View {
     @State private var editingSet: QuizSet? = nil
     
     // MARK: - WŁAŚCIWOŚCI POMOCNICZE
-
+    
     /// Pomocnicza etykieta dla przycisku "Dodaj Zestaw" (Immersyjna Karta)
     var addButtonLabel: some View {
         VStack(spacing: 10) {
@@ -37,12 +38,12 @@ struct ContentView: View {
         .frame(maxWidth: .infinity)
         .padding(30)
         .background(
-            LinearGradient(gradient: Gradient(colors: [Color.blue.opacity(0.8), Color.blue]), startPoint: .topLeading, endPoint: .bottomTrailing)
+            LinearGradient(gradient: Gradient(colors: [Color.blue.opacity(0.😎, Color.blue]), startPoint: .topLeading, endPoint: .bottomTrailing)
         )
         .cornerRadius(20)
         .shadow(color: .blue.opacity(0.5), radius: 10, x: 0, y: 5)
     }
-
+    
     /// Pasek narzędzi: Import i Eksport rozdzielone i czytelne
     var toolbarButtons: some View {
         HStack(spacing: 15) {
@@ -63,7 +64,7 @@ struct ContentView: View {
                     .imageScale(.large)
             }
             .accessibilityLabel("Importuj zestaw")
-
+            
             // Eksport (otwórz wybór zestawu)
             Button {
                 selectedSetForExport = nil
@@ -95,7 +96,8 @@ struct ContentView: View {
                             manager: manager,
                             quizSet: quizSet,
                             onEdit: { set in editingSet = set },
-                            onDelete: { set in manager.removeSet(set) }
+                            onDelete: { set in manager.removeSet(set)},
+                            onReset: {set in manager.resetSetProgress(set)}
                         )
                         .frame(maxWidth: .infinity)
                     }
@@ -122,13 +124,13 @@ struct ContentView: View {
             .sheet(isPresented: $showingExportSheet) {
                 ExportSelectionView(
                     manager: manager,
-                    selectedSet: $selectedSetForExport,
-                    isExporting: $isExporting,
+                    onExportConfirmed: { set in
+                        documentToExport = QuizDocument(quizSet: set)
+                        isExporting = true
+                    },
                     dismissSheet: { showingExportSheet = false }
                 )
             }
-            
-            // MARK: - Systemowe Importery/Eksportery
             .fileImporter(
                 isPresented: $isImporting,
                 allowedContentTypes: [.json],
@@ -136,11 +138,19 @@ struct ContentView: View {
             ) { result in
                 do {
                     guard let fileURL = try result.get().first else { return }
-                    let data = try Data(contentsOf: fileURL)
-                    if let jsonString = String(data: data, encoding: .utf8) {
-                        if manager.importSetFromJSON(jsonString: jsonString) {
-                            print("Pomyślnie zaimportowano plik JSON.")
+                    
+                    // 🔑 KLUCZOWE: Uzyskanie dostępu do pliku "bezpiecznego" (sandbox)
+                    if fileURL.startAccessingSecurityScopedResource() {
+                        defer { fileURL.stopAccessingSecurityScopedResource() }
+                        
+                        let data = try Data(contentsOf: fileURL)
+                        if let jsonString = String(data: data, encoding: .utf8) {
+                            if manager.importSetFromJSON(jsonString: jsonString) {
+                                print("Pomyślnie zaimportowano plik JSON.")
+                            }
                         }
+                    } else {
+                        print("Brak dostępu do pliku (Security Scoped Resource).")
                     }
                 } catch {
                     print("Błąd importu pliku: \(error.localizedDescription)")
@@ -148,18 +158,20 @@ struct ContentView: View {
             }
             .fileExporter(
                 isPresented: $isExporting,
-                items: [selectedSetForExport].compactMap { $0 },
-                contentTypes: [.json],
-                onCompletion: { result in
-                    switch result {
-                    case .success:
-                        print("Pomyślnie wyeksportowano plik.")
-                    case .failure(let error):
-                        print("Błąd eksportu pliku: \(error.localizedDescription)")
-                    }
-                    selectedSetForExport = nil
+                document: documentToExport ?? QuizDocument(quizSet: QuizSet(name: "Error", questions: [])),
+                contentType: .json,
+                defaultFilename: documentToExport?.quizSet.name ?? "QuizExport"
+            ) { result in
+                switch result {
+                case .success(let url):
+                    print("Pomyślnie zapisano plik: \(url)")
+                case .failure(let error):
+                    print("Błąd zapisu: \(error.localizedDescription)")
                 }
-            )
+                // Reset po zapisie
+                documentToExport = nil
+            }
+            
         }
     }
     
@@ -207,6 +219,7 @@ struct SetCardView: View {
     var quizSet: QuizSet
     var onEdit: (QuizSet) -> Void
     var onDelete: (QuizSet) -> Void
+    var onReset: (QuizSet) -> Void // ✅ NOWE: Closure do resetowania
     
     var progress: Double {
         guard quizSet.questions.count > 0 else { return 0 }
@@ -242,29 +255,36 @@ struct SetCardView: View {
                             .foregroundColor(.gray)
                     }
                     Spacer()
+                    
+                    // MARK: - MENU ZMIENIONE
                     Menu {
+                        // 1. Edycja
                         Button {
                             onEdit(quizSet)
                         } label: {
                             Label("Edytuj zestaw", systemImage: "pencil")
                         }
+                        
+                        // 2. ✅ NOWE: Reset Postępu (zamiast Eksportu)
+                        Button {
+                            onReset(quizSet)
+                        } label: {
+                            Label("Resetuj postęp", systemImage: "arrow.counterclockwise")
+                        }
+                        
+                        Divider()
+                        
+                        // 3. Usuwanie
                         Button(role: .destructive) {
                             onDelete(quizSet)
                         } label: {
                             Label("Usuń zestaw", systemImage: "trash")
                         }
-                        Divider()
-                        Button {
-                            // Szybki eksport tego konkretnego zestawu
-                            // Notyfikacja do ContentView przez NotificationCenter lub inny mechanizm mogłaby być użyta.
-                            // Tu zostawiamy tylko placeholder – eksport globalnie robimy z toolbaru i arkusza wyboru.
-                        } label: {
-                            Label("Eksportuj ten zestaw", systemImage: "square.and.arrow.up")
-                        }
                     } label: {
                         Image(systemName: "ellipsis.circle.fill")
                             .font(.title2)
                             .foregroundColor(.secondary)
+                            .frame(width: 44, height: 44) // Powiększony obszar dotyku
                     }
                 }
                 
@@ -294,9 +314,11 @@ struct SetCardView: View {
 /// Widok do wyboru zestawu przed eksportem pliku (sheet)
 struct ExportSelectionView: View {
     @ObservedObject var manager: QuizSetManager
-    @Binding var selectedSet: QuizSet?
-    @Binding var isExporting: Bool
+    // Zamiast bindingów, użyjemy prostego callbacka
+    var onExportConfirmed: (QuizSet) -> Void
     var dismissSheet: () -> Void
+    
+    @State private var selectedSet: QuizSet? // Lokalne @State
     
     var body: some View {
         NavigationView {
@@ -317,13 +339,10 @@ struct ExportSelectionView: View {
                 .padding(.horizontal)
                 
                 Button("Eksportuj Plik JSON") {
-                    if selectedSet != nil {
-                        // Zamknij arkusz i uruchom systemowy fileExporter
+                    if let set = selectedSet {
+                        // Przekazujemy wybrany zestaw wyżej i zamykamy okno
+                        onExportConfirmed(set)
                         dismissSheet()
-                        // Za chwilę ContentView uruchomi fileExporter, bo isExporting zostanie ustawione na true
-                        // i selectedSetForExport będzie już ustawiony (w ContentView).
-                        // W tym widoku ustawiamy tylko flagę isExporting, ContentView ma już binding.
-                        isExporting = true
                     }
                 }
                 .buttonStyle(ModernButtonStyle(backgroundColor: .blue))
@@ -348,7 +367,7 @@ struct ExportSelectionView: View {
 /// Niestandardowy styl przycisku dla nowoczesnego wyglądu (zaokrąglone i cieniowane)
 struct ModernButtonStyle: ButtonStyle {
     var backgroundColor: Color
-
+    
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.headline)
