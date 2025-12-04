@@ -81,4 +81,3 @@ The application uses a simple JSON format for exchanging quiz sets. Below is an 
   ]
 }
 
-Note: The id fields are UUIDs generated automatically. When manually creating a JSON file, you can omit them (if the decoder is adapted) or generate random UUID strings.
